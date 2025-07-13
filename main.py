@@ -7,6 +7,15 @@ import uuid
 import pandas as pd
 from datetime import datetime, date
 from playwright.async_api import async_playwright
+from supabase import create_client, Client
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+supabase_url = os.getenv("URL")
+supabase_key = os.getenv("KEY")
+supabase: Client = create_client(supabase_url, supabase_key)
 
 # ------------------ Logging Setup ------------------
 logging.basicConfig(
@@ -38,6 +47,14 @@ def clean_price(text):
     cleaned = re.sub(r'[^\d.]', '', text)
     return cleaned if cleaned else "N/A"
 
+def normalize_key(key):   
+    key = key.lower().strip()
+    key = re.sub(r'[^\w\s]', '', key) # Remove special characters
+    key = key.replace(" ", "_")
+    if key == "references":
+        key = "reference"
+    return key
+
 async def scrape_spec_table(page):
     specs = {}
     try:
@@ -45,8 +62,9 @@ async def scrape_spec_table(page):
         for row in rows:
             cells = await row.query_selector_all("td")
             if len(cells) == 2:
-                key = (await cells[0].inner_text()).strip()
+                raw_key = (await cells[0].inner_text()).strip()
                 value = (await cells[1].inner_text()).strip()
+                key = normalize_key(raw_key)
                 specs[key] = value
     except Exception as e:
         logging.error(f"Error extracting spec table: {e}")
@@ -202,7 +220,7 @@ async def main():
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
     successful_watches = sum(1 for r in price_results if r["model_id"] != "Error")
-    
+
     # Create log entry
     log_entry = {
      "id": str(uuid.uuid4()),
@@ -212,10 +230,20 @@ async def main():
      "total_watches": len(watch_urls),
      "successful_watches": successful_watches
     }
+    # Insert watch_prices
+    for price in price_results:
+     supabase.table("watch_prices").insert(price).execute()
+
+    # Insert watch_specs
+    for spec in specs_results:
+     supabase.table("watch_specs").insert(spec).execute()
+
+    # Insert scrape_logs
+    supabase.table("scrape_logs").insert(log_entry).execute()
 
     # Save to Excel
     log_df = pd.DataFrame([log_entry])
-    log_df.to_excel("scrape_logs.xlsx", index=False)
+    # log_df.to_excel("scrape_logs.xlsx", index=False)
 
     logging.info(f"Scraping session completed in {duration:.2f} seconds.")
 
