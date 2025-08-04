@@ -102,6 +102,7 @@ async def scrape_watch_data(browser, url, timestamp):
         model_id = "N/A"
         market_price = "N/A"
         retail_price = "N/A"
+        image_url = "N/A"
 
         try:
             model_element = await page.query_selector("h2.h4.font-weight-bolder") or await page.query_selector("h2")
@@ -135,6 +136,12 @@ async def scrape_watch_data(browser, url, timestamp):
                     retail_price = clean_price(raw_retail_price)
         except:
             pass
+        try:
+            image_container = await page.query_selector("div.mx-0.mx-lg-3.mx-xl-5 img")
+            if image_container:
+                image_url = await image_container.get_attribute("src")
+        except Exception as e:
+            pass
         specs = await scrape_spec_table(page)
 
         await page.close()
@@ -151,6 +158,7 @@ async def scrape_watch_data(browser, url, timestamp):
         }, {
             "model_id": model_id,
             "model_name": model_name,
+            "image_url": image_url,
             **specs
         }
 
