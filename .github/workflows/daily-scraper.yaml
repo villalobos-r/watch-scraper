@@ -27,6 +27,6 @@ jobs:
 
     - name: Run your Python script
       env:
-        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        SUPABASE_URL: ${{ secrets.URL }}
+        SUPABASE_KEY: ${{ secrets.KEY }}
       run: python main.py
