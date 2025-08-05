@@ -2,24 +2,21 @@ name: Daily scraper
 
 on:
   schedule:
-    # Runs at 00:00 UTC every day
-    # You can adjust the cron expression to your desired time
-    # Check crontab.guru for help: https://crontab.guru/
     - cron: '0 0 * * *' 
-  workflow_dispatch: # Allows you to manually trigger the workflow from the GitHub UI
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest # The operating system to run the job on
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4 # Action to check out your repository code
+      uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10' # Specify your Python version (e.g., '3.9', '3.10', '3.11', '3.12')
+        python-version: '3.10'
 
     - name: Install dependencies (if you have a requirements.txt)
       run: |
@@ -32,4 +29,4 @@ jobs:
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-      run: python main.py # Replace 'your_script_name.py' with the actual path to your script
+      run: python main.py
