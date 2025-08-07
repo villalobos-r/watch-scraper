@@ -81,8 +81,8 @@ async def scrape_watch_data(browser, url, timestamp):
 
         logging.info(f"Scraping started for {url}")
         try:
-            await page.goto(url, timeout=30000)
-            await page.wait_for_selector("h1.mb-0.font-weight-bolder.text-break", timeout=30000)
+            await page.goto(url, timeout=60000)
+            await page.wait_for_selector("h1.mb-0.font-weight-bolder.text-break", timeout=60000)
         except Exception as e:
             logging.error(f"Timeout or load error for {url}: {e}")
             await page.close()
