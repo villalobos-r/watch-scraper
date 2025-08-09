@@ -25,9 +25,6 @@ jobs:
           pip install -r requirements.txt
         fi
 
-    - name: Install Playwright browsers
-      run: python -m playwright install
-
     - name: Run your Python script
       env:
         URL: ${{ secrets.URL }}
