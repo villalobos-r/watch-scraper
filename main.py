@@ -7,6 +7,7 @@ from datetime import datetime, timezone, date
 from typing import Optional, Tuple, Dict
 import json, hashlib
 from uuid import uuid4
+import logging  # <-- added
 
 import cloudscraper
 from bs4 import BeautifulSoup
@@ -39,6 +40,75 @@ WATCH_URLS = [
     "https://watchcharts.com/watch_model/1748-grand-seiko-shunbun-sbga413/overview",
     "https://watchcharts.com/watch_model/46344-iwc-ingenieur-automatic-40-328903/overview"
 ]
+
+# ------------------ Logging Setup ------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("scraper.log", mode='w', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+
+# ---------- Supabase-backed log handler (id_is_uuid=True) ----------
+class SupabaseScrapeLogHandler(logging.Handler):
+    """
+    Custom logging handler that inserts one row into 'scrape_logs'
+    whenever it receives a log record with extra['event'] == 'SCRAPE_RUN_COMPLETE'.
+
+    Schema covered (legacy):
+      id (UUID PK)  <-- we generate this and insert as 'id'
+      start_time (string "YYYY-MM-DD HH:MM:SS")
+      end_time   (string "YYYY-MM-DD HH:MM:SS")
+      duration_seconds (float)
+      total_watches (int)
+      successful_watches (int)
+    """
+    def __init__(self, table_name: str = "scrape_logs"):
+        super().__init__()
+        # Support your env names (URL/KEY) and also the common SUPABASE_* if ever needed
+        url = os.getenv("URL") or os.getenv("SUPABASE_URL")
+        key = os.getenv("KEY") or os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+        if not url or not key:
+            raise RuntimeError("Missing Supabase credentials. Set URL/KEY (or SUPABASE_URL/SUPABASE_KEY).")
+        self.table = table_name
+        self.supabase: Client = create_client(url, key)
+
+    @staticmethod
+    def _to_utc_naive(dt: datetime) -> datetime:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+
+    @staticmethod
+    def _fmt(dt: datetime) -> str:
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if getattr(record, "event", None) != "SCRAPE_RUN_COMPLETE":
+            return
+        try:
+            start_time: datetime = getattr(record, "start_time")
+            total_watches: int = int(getattr(record, "total_watches", 0))
+            successful_watches: int = int(getattr(record, "successful_watches", 0))
+
+            end_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            start_naive = self._to_utc_naive(start_time)
+            duration_seconds = (end_time - start_naive).total_seconds()
+
+            log_entry = {
+                "id": str(uuid.uuid4()),  # id_is_uuid=True path
+                "start_time": self._fmt(start_naive),
+                "end_time": self._fmt(end_time),
+                "duration_seconds": duration_seconds,
+                "total_watches": total_watches,
+                "successful_watches": successful_watches
+            }
+            self.supabase.table(self.table).insert(log_entry).execute()
+        except Exception:
+            logging.getLogger(__name__).exception("Failed to insert scrape log into Supabase")
+
+# Attach the handler
+logging.getLogger().addHandler(SupabaseScrapeLogHandler())
 
 # ---------- Supabase ----------
 def connect_supabase() -> Client:
@@ -455,26 +525,54 @@ def main():
     sb = connect_supabase()
     quick_supabase_check(sb)
 
-    for url in WATCH_URLS:
-        print(f"\n== {url}")
-        html = polite_get_per_url(url)
-        if not html:
-            print("  fetch: FAILED (blocked or error)")
-            continue
+    start_time = datetime.now(timezone.utc)
+    total_watches = len(WATCH_URLS)
+    successful_watches = 0
 
-        prices = parse_prices(html)
-        specs = parse_specs(html, page_url=url)
+    try:
+        for url in WATCH_URLS:
+            print(f"\n== {url}")
+            html = polite_get_per_url(url)
+            if not html:
+                print("  fetch: FAILED (blocked or error)")
+                continue
 
-        # ---- DB writes (write-once specs, daily price snapshot) ----
-        if specs:
-            s_action = db_insert_specs_if_absent(sb, url, specs)
-            print(f"  specs write: {s_action}")
+            prices = parse_prices(html)
+            specs = parse_specs(html, page_url=url)
 
-        if prices:
-            model_id = specs.get("model_id") if specs else None
-            model_name = specs.get("model_name") if specs else None
-            p_action = db_upsert_price_today(sb, url, prices, model_id, model_name)
-            print(f"  price write: {p_action}")
+            any_written = False
+
+            # ---- DB writes (write-once specs, daily price snapshot) ----
+            if specs:
+                s_action = db_insert_specs_if_absent(sb, url, specs)
+                print(f"  specs write: {s_action}")
+                any_written = True
+
+            if prices:
+                model_id = specs.get("model_id") if specs else None
+                model_name = specs.get("model_name") if specs else None
+                p_action = db_upsert_price_today(sb, url, prices, model_id, model_name)
+                print(f"  price write: {p_action}")
+                any_written = True
+
+            if any_written:
+                successful_watches += 1
+
+    except Exception:
+        # Ensure the run is still recorded with whatever counts we have so far
+        logging.exception("Unhandled error during scrape.")
+        raise
+    finally:
+        # One structured log that triggers the Supabase insert via the handler
+        logging.info(
+            "SCRAPE RUN COMPLETE",
+            extra={
+                "event": "SCRAPE_RUN_COMPLETE",
+                "start_time": start_time,
+                "total_watches": total_watches,
+                "successful_watches": successful_watches
+            }
+        )
 
 if __name__ == "__main__":
     main()
