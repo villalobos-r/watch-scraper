@@ -39,6 +39,7 @@ WATCH_URLS = [
     "https://watchcharts.com/watch_model/2700-omega-seamaster-aqua-terra-150m-master-chronometer-41-220-10-41-21-10-001/overview",
     "https://watchcharts.com/watch_model/36333-tudor-black-bay-pro-79470/overview",
     "https://watchcharts.com/watch_model/36318-vacheron-constantin-historiques-222-4200h-222j-b935/overview",
+    "https://watchcharts.com/watch_model/54377-vacheron-constantin-historiques-222-4200h-222a-b934/overview",
     "https://watchcharts.com/watch_model/1748-grand-seiko-shunbun-sbga413/overview",
     "https://watchcharts.com/watch_model/46344-iwc-ingenieur-automatic-40-328903/overview"
 ]
